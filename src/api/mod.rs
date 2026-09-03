@@ -698,6 +698,23 @@ mod tests {
             "get_project returned a different project"
         );
 
+        // The project was created without a lead, so expanding that relation is
+        // the case where Plane answers with `{}` instead of null. It must not
+        // fail the decode.
+        let expanded = client
+            .get_project(
+                project.id,
+                &DetailParams {
+                    expand: Some("project_lead,default_assignee".into()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        ensure!(
+            expanded.project_lead.is_none() && expanded.default_assignee.is_none(),
+            "an empty expansion object should decode as absent, not as a person"
+        );
+
         // Edit it: turn on a feature and rewrite the description.
         let updated = client
             .update_project(
@@ -866,17 +883,31 @@ mod tests {
             renamed.name
         );
 
-        // Expanding state should inline the object rather than the bare id.
+        // The same expand set the details widget asks for. These items have no
+        // parent and no estimate, so those two relations come back as stubs
+        // rather than null -- the case that used to fail the whole decode.
         let expanded = client
             .get_work_item(
                 project.id,
                 parent.id,
                 &DetailParams {
-                    expand: Some("state".into()),
+                    expand: Some("state,parent,created_by,updated_by,estimate_point".into()),
                     ..Default::default()
                 },
             )
             .await?;
+        ensure!(
+            expanded.parent.is_none() && expanded.estimate_point.is_none(),
+            "unset relations should fold to None, not decode as real objects"
+        );
+        ensure!(
+            expanded
+                .created_by
+                .as_ref()
+                .and_then(|user| user.expanded())
+                .is_some(),
+            "created_by should expand into a person"
+        );
         let state = expanded
             .state
             .as_ref()

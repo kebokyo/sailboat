@@ -11,7 +11,9 @@ chrono = { version = "0.4.45", features = ["serde"] }
 color-eyre = "0.6.5"
 crossterm = { version = "0.29.0", features = ["event-stream"] }
 dotenvy = "0.15.7"
+htmd = "0.5.5"
 http = "1.5.0"
+pulldown-cmark = "0.13.4"
 ratatui = "0.30.2"
 reqwest = { version = "0.13.4", features = ["json", "query"] }
 serde = { version = "1.0.229", features = ["derive"] }

@@ -2,3 +2,5 @@
 .env
 /.agents
 /.claude
+skills-lock.json
+CLAUDE.md
