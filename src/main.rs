@@ -3,9 +3,6 @@ mod config;
 mod ui;
 mod app;
 
-use ratatui::{DefaultTerminal, Frame};
-
-use crate::api::Client;
 use crate::app::App;
 
 #[tokio::main]

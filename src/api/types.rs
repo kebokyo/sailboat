@@ -972,6 +972,54 @@ pub struct WorkItemSearchResult {
     pub type_id: Option<Uuid>,
 }
 
+/// Aggregate counts for one project, from its summary endpoint.
+///
+/// The project list payload carries member, cycle and module counts but no work
+/// item count, so this is the only way to get one without listing a project's
+/// work items and reading the page envelope.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProjectSummary {
+    pub id: Uuid,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub identifier: String,
+    #[serde(default)]
+    pub counts: ProjectCounts,
+}
+
+impl Identified for ProjectSummary {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+}
+
+/// The `counts` object nested inside a [`ProjectSummary`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProjectCounts {
+    /// Work items in the project. Still spelled `issues` on the wire.
+    #[serde(default)]
+    pub issues: i64,
+    #[serde(default)]
+    pub states: i64,
+    #[serde(default)]
+    pub intakes: i64,
+    #[serde(default)]
+    pub labels: i64,
+    #[serde(default)]
+    pub members: i64,
+    #[serde(default)]
+    pub modules: i64,
+    #[serde(default)]
+    pub cycles: i64,
+    #[serde(default)]
+    pub pages: i64,
+    #[serde(default)]
+    pub work_item_types: i64,
+    #[serde(default)]
+    pub work_item_properties: i64,
+}
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------

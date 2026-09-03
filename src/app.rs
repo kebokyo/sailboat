@@ -1,13 +1,13 @@
-use std::{sync::{Arc, RwLock}, time::Duration};
+use std::{collections::HashMap, sync::{Arc, RwLock}, time::Duration};
 
 use color_eyre::eyre::Result;
 use crossterm::event::{Event, EventStream, KeyCode};
-use ratatui::{DefaultTerminal, widgets::ListState};
+use ratatui::{DefaultTerminal, widgets::TableState};
 use tokio_stream::StreamExt;
 
 use uuid::Uuid;
 
-use crate::{api::{Client, types::{ListWorkItemsParams, PageParams, Project, WorkItem}}, config::{Config, Workspace}, ui::ui};
+use crate::{api::{Client, types::{Identified, ListWorkItemsParams, PageParams, Project, WorkItem}}, config::Config, ui::ui};
 
 /// The different views that sailboat displays.
 #[derive(Debug, Default)]
@@ -82,7 +82,7 @@ impl App {
             // Load the highlighted project's work items. Chosen because it
             // keeps fetches deliberate -- loading on every scroll step would
             // fire a request per keypress and burn the 60/minute budget.
-            CurrentScreen::MainProjectsView => {
+            CurrentScreen::MainProjectsView if self.list_projects.is_ready() => {
                 if let Some(project) = self.list_projects.selected_project() {
                     self.list_work_items.run(api, project.id);
                     self.current_project = Some(project);
@@ -97,25 +97,38 @@ impl App {
         match self.current_screen {
             CurrentScreen::MainWorkItemsView => {
                 self.list_projects.run(api);
-                self.current_project = None;
+                // `current_project` is left as-is: the work items pane still
+                // shows that project, and the highlight in the list survives the
+                // refresh, so clearing it here would contradict both.
                 self.current_screen = CurrentScreen::MainProjectsView;
             }
             _ => {}
         }
     }
 
+    // Scrolling and selection are ignored while the focused list is refreshing.
+    // Its rows are about to be replaced, and acting on them risks opening a
+    // project that no longer exists by the time the response lands.
     fn scroll_down(&mut self) {
         match self.current_screen {
-            CurrentScreen::MainProjectsView => self.list_projects.scroll_down(),
-            CurrentScreen::MainWorkItemsView => self.list_work_items.scroll_down(),
+            CurrentScreen::MainProjectsView if self.list_projects.is_ready() => {
+                self.list_projects.scroll_down()
+            }
+            CurrentScreen::MainWorkItemsView if self.list_work_items.is_ready() => {
+                self.list_work_items.scroll_down()
+            }
             _ => {}
         }
     }
 
     fn scroll_up(&mut self) {
         match self.current_screen {
-            CurrentScreen::MainProjectsView => self.list_projects.scroll_up(),
-            CurrentScreen::MainWorkItemsView => self.list_work_items.scroll_up(),
+            CurrentScreen::MainProjectsView if self.list_projects.is_ready() => {
+                self.list_projects.scroll_up()
+            }
+            CurrentScreen::MainWorkItemsView if self.list_work_items.is_ready() => {
+                self.list_work_items.scroll_up()
+            }
             _ => {}
         }
     }
@@ -124,7 +137,9 @@ impl App {
         match self.current_screen {
             CurrentScreen::MainWorkItemsView => {
                 self.list_projects.run(api);
-                self.current_project = None;
+                // `current_project` is left as-is: the work items pane still
+                // shows that project, and the highlight in the list survives the
+                // refresh, so clearing it here would contradict both.
                 self.current_screen = CurrentScreen::MainProjectsView;
             }
             _ => {}
@@ -136,7 +151,7 @@ impl App {
             // Load the highlighted project's work items. Chosen because it
             // keeps fetches deliberate -- loading on every scroll step would
             // fire a request per keypress and burn the 60/minute budget.
-            CurrentScreen::MainProjectsView => {
+            CurrentScreen::MainProjectsView if self.list_projects.is_ready() => {
                 if let Some(project) = self.list_projects.selected_project() {
                     self.list_work_items.run(api, project.id);
                     self.current_project = Some(project);
@@ -157,7 +172,11 @@ pub struct ListProjectsWidget {
 pub(crate) struct ListProjectsState {
     pub projects: Vec<Project>,
     pub loading_state: LoadingState,
-    pub list_state: ListState,
+    pub table_state: TableState,
+    /// Work item counts, keyed by project. Each one costs its own request, so
+    /// they are cached across refreshes and only fetched for projects not seen
+    /// before -- a refresh of an unchanged workspace stays a single request.
+    pub work_item_counts: HashMap<Uuid, i64>,
     cursor: Option<String>,
 }
 
@@ -171,14 +190,13 @@ pub(crate) enum LoadingState {
 }
 
 impl ListProjectsWidget {
+    /// Re-fetch the first page of projects.
+    ///
+    /// Deliberately leaves the current contents and selection alone. The rows
+    /// already on screen stay put until their replacements arrive, so tabbing
+    /// back here does not blank the pane for the length of a round trip -- the
+    /// loading indicator in the title is the only sign a refresh is running.
     fn run(&self, api: &Client) {
-        {
-            let mut state = self.state.write().unwrap();
-            state.projects.clear();
-            state.cursor = None;
-            state.list_state.select(None);
-        }
-
         let this = self.clone(); // clone the widget to pass to the background task
         tokio::spawn(this.fetch_projects(api.clone()));
     }
@@ -187,29 +205,73 @@ impl ListProjectsWidget {
     /// Failures land in [`LoadingState::Error`] for the UI to render instead.
     async fn fetch_projects(self, api: Client) {
         self.set_loading_state(LoadingState::Loading);
-        match self.load_projects(&api).await {
+        match self.refresh_projects(&api).await {
             Ok(()) => self.set_loading_state(LoadingState::Loaded),
             Err(error) => self.set_loading_state(LoadingState::Error(error.to_string())),
         }
     }
 
     /// The fallible half, split out so `?` has somewhere to go.
-    async fn load_projects(&self, api: &Client) -> Result<()> {
-        let mut params = PageParams::default();
-        // Cloned so the guard is dropped at the end of this statement. A std guard
-        // held across the await below would make this future non-Send and fail to
-        // spawn -- the compiler enforces what was only a convention before.
-        params.cursor = self.state.read().unwrap().cursor.clone();
+    ///
+    /// Swaps the whole list in one assignment once the response is in hand, so
+    /// there is no window where the pane is empty.
+    async fn refresh_projects(&self, api: &Client) -> Result<()> {
+        // A refresh always starts from the first page. `cursor` is still stored
+        // below so a future "load more" has somewhere to resume from.
+        let params = PageParams::default();
 
         let page = api.list_projects(&params).await?;
         // Read the cursor before `results` is moved out of `page`.
         let next_cursor = page.next().map(str::to_string);
 
         let mut state = self.state.write().unwrap();
-        state.projects.extend(page.results);
+
+        // Which project the cursor was sitting on, before the contents change.
+        let selected_id = state
+            .table_state
+            .selected()
+            .and_then(|index| state.projects.get(index))
+            .map(|project| project.id);
+
+        state.projects = page.results;
         state.cursor = next_cursor;
-        state.list_state.select_first();
+
+        let next_selection = restored_selection(&state.projects, selected_id);
+        state.table_state.select(next_selection);
+
+        // Counts are not in the list payload. Fetch only the ones we do not
+        // already hold, so tabbing back and forth costs nothing extra.
+        let missing: Vec<Uuid> = state
+            .projects
+            .iter()
+            .map(|project| project.id)
+            .filter(|id| !state.work_item_counts.contains_key(id))
+            .collect();
+        drop(state);
+
+        if !missing.is_empty() {
+            tokio::spawn(self.clone().fetch_missing_counts(api.clone(), missing));
+        }
+
         Ok(())
+    }
+
+    /// Fills in work item counts one project at a time.
+    ///
+    /// Sequential rather than concurrent on purpose: a workspace with thirty
+    /// projects would otherwise fire thirty requests at once and spend most of
+    /// the 60-per-minute budget on a single refresh. A count that fails to
+    /// arrive renders as a placeholder rather than failing the list.
+    async fn fetch_missing_counts(self, api: Client, ids: Vec<Uuid>) {
+        for id in ids {
+            if let Ok(summary) = api.project_summary(id).await {
+                self.state
+                    .write()
+                    .unwrap()
+                    .work_item_counts
+                    .insert(id, summary.counts.issues);
+            }
+        }
     }
 
     fn set_loading_state(&self, state: LoadingState) {
@@ -217,11 +279,17 @@ impl ListProjectsWidget {
     }
 
     fn scroll_down(&self) {
-        self.state.write().unwrap().list_state.scroll_down_by(1);
+        self.state.write().unwrap().table_state.scroll_down_by(1);
     }
 
     fn scroll_up(&self) {
-        self.state.write().unwrap().list_state.scroll_up_by(1);
+        self.state.write().unwrap().table_state.scroll_up_by(1);
+    }
+
+    /// Whether the list is showing data that is current. Input is ignored while
+    /// it is not, so a keypress cannot act on rows about to be replaced.
+    fn is_ready(&self) -> bool {
+        self.state.read().unwrap().loading_state == LoadingState::Loaded
     }
 
     /// The project under the cursor. Cloned rather than borrowed so the caller
@@ -229,7 +297,7 @@ impl ListProjectsWidget {
     fn selected_project(&self) -> Option<Project> {
         let state = self.state.read().unwrap();
         state
-            .list_state
+            .table_state
             .selected()
             .and_then(|index| state.projects.get(index))
             .cloned()
@@ -249,23 +317,28 @@ pub struct ListWorkItemsWidget {
 pub(crate) struct ListWorkItemsState {
     pub work_items: Vec<WorkItem>,
     pub loading_state: LoadingState,
-    pub list_state: ListState,
+    pub table_state: TableState,
     /// Which project these belong to, so paging can continue against it.
     project_id: Option<Uuid>,
     cursor: Option<String>,
 }
 
 impl ListWorkItemsWidget {
-    /// Point the widget at a project and fetch its first page. Any items from a
-    /// previously selected project are discarded first, so a slow response can
-    /// never append onto the wrong list.
+    /// Point the widget at a project and fetch its first page.
+    ///
+    /// Switching to a *different* project wipes the pane first, since showing
+    /// one project's items under another's heading would be wrong. Refreshing
+    /// the project already on screen leaves the rows in place until their
+    /// replacements arrive, so the pane never blanks.
     fn run(&self, api: &Client, project_id: Uuid) {
         {
             let mut state = self.state.write().unwrap();
-            state.work_items.clear();
-            state.cursor = None;
-            state.list_state.select(None);
-            state.project_id = Some(project_id);
+            if state.project_id != Some(project_id) {
+                state.work_items.clear();
+                state.cursor = None;
+                state.table_state.select(None);
+                state.project_id = Some(project_id);
+            }
         }
 
         let this = self.clone();
@@ -299,9 +372,19 @@ impl ListWorkItemsWidget {
         if state.project_id != Some(project_id) {
             return Ok(());
         }
-        state.work_items.extend(page.results);
+        // Same reasoning as the projects list: swap the contents in one
+        // assignment and put the cursor back on the work item it was on.
+        let selected_id = state
+            .table_state
+            .selected()
+            .and_then(|index| state.work_items.get(index))
+            .map(|item| item.id);
+
+        state.work_items = page.results;
         state.cursor = next_cursor;
-        state.list_state.select_first();
+
+        let next_selection = restored_selection(&state.work_items, selected_id);
+        state.table_state.select(next_selection);
         Ok(())
     }
 
@@ -310,10 +393,94 @@ impl ListWorkItemsWidget {
     }
 
     pub fn scroll_down(&self) {
-        self.state.write().unwrap().list_state.scroll_down_by(1);
+        self.state.write().unwrap().table_state.scroll_down_by(1);
     }
 
     pub fn scroll_up(&self) {
-        self.state.write().unwrap().list_state.scroll_up_by(1);
+        self.state.write().unwrap().table_state.scroll_up_by(1);
+    }
+
+    /// See [`ListProjectsWidget::is_ready`].
+    fn is_ready(&self) -> bool {
+        self.state.read().unwrap().loading_state == LoadingState::Loaded
+    }
+}
+
+/// Where the cursor belongs after a refresh has swapped a list's contents out.
+///
+/// Matches on project id rather than reusing the old index: a refresh can add,
+/// remove or reorder rows, and an index would quietly leave the cursor pointing
+/// at a different project than the one the user chose. Falls back to the top of
+/// the list when there was no selection, or when the selected project is gone.
+fn restored_selection<T: Identified>(items: &[T], previously_selected: Option<Uuid>) -> Option<usize> {
+    let found = previously_selected.and_then(|id| items.iter().position(|item| item.id() == id));
+
+    match found {
+        Some(index) => Some(index),
+        None if items.is_empty() => None,
+        None => Some(0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Most of `Project` is `#[serde(default)]`, so a test fixture only needs
+    /// the fields under test.
+    fn project(id: Uuid, name: &str) -> Project {
+        serde_json::from_value(serde_json::json!({ "id": id, "name": name }))
+            .expect("minimal project should decode")
+    }
+
+    #[test]
+    fn selection_follows_the_project_when_a_refresh_reorders_the_list() {
+        let (a, b, c) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        // The user was on `b`, at index 1. A refresh brings it back at index 2.
+        let refreshed = vec![project(c, "c"), project(a, "a"), project(b, "b")];
+        assert_eq!(restored_selection(&refreshed, Some(b)), Some(2));
+    }
+
+    #[test]
+    fn selection_stays_put_when_nothing_moved() {
+        let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
+        let refreshed = vec![project(a, "a"), project(b, "b")];
+        assert_eq!(restored_selection(&refreshed, Some(b)), Some(1));
+    }
+
+    #[test]
+    fn a_deleted_project_drops_the_cursor_to_the_top_rather_than_out_of_bounds() {
+        let (a, gone) = (Uuid::new_v4(), Uuid::new_v4());
+        let refreshed = vec![project(a, "a")];
+        assert_eq!(restored_selection(&refreshed, Some(gone)), Some(0));
+    }
+
+    #[test]
+    fn the_first_load_selects_the_top() {
+        let refreshed = vec![project(Uuid::new_v4(), "a")];
+        assert_eq!(restored_selection(&refreshed, None), Some(0));
+    }
+
+    #[test]
+    fn a_list_is_only_ready_once_a_refresh_has_landed() {
+        let widget = ListProjectsWidget::default();
+        // Nothing fetched yet, so input must not act on an empty list.
+        assert!(!widget.is_ready());
+
+        widget.set_loading_state(LoadingState::Loading);
+        assert!(!widget.is_ready(), "rows are mid-replacement");
+
+        widget.set_loading_state(LoadingState::Loaded);
+        assert!(widget.is_ready());
+
+        widget.set_loading_state(LoadingState::Error("boom".to_string()));
+        assert!(!widget.is_ready(), "a failed refresh leaves stale rows on screen");
+    }
+
+    #[test]
+    fn an_empty_workspace_selects_nothing() {
+        let empty: [Project; 0] = [];
+        assert_eq!(restored_selection(&empty, None), None);
+        assert_eq!(restored_selection(&empty, Some(Uuid::new_v4())), None);
     }
 }

@@ -27,6 +27,7 @@
 //! | `GET`    | `/work-items/{IDENT}-{seq}/`                                | [`Client::get_work_item_by_key`]        | [`WorkItem`]             |
 //! | `GET`    | `/work-items/search/`                                       | [`Client::search_work_items`]           | [`SearchWorkItems`]      |
 //! | `GET`    | `/projects/{project_id}/states/`                            | [`Client::list_states`]                 | [`Paginated<StateLite>`] |
+//! | `GET`    | `/projects/{project_id}/summary/`                           | [`Client::project_summary`]             | [`ProjectSummary`]       |
 //!
 //! The states row is the one addition to the set the types module described:
 //! "completed" is a property of a work item's *state*, not of the work item, so
@@ -47,7 +48,7 @@ use uuid::Uuid;
 use crate::api::types::{
     ApiError, CreateProjectRequest, CreateWorkItemRequest, DetailParams, ListProjectsParams,
     ListWorkItemsParams, PageParams, Paginated, Project, SearchWorkItems, SearchWorkItemsParams,
-    StateLite, UpdateProjectRequest, UpdateWorkItemRequest, WorkItem,
+    ProjectSummary, StateLite, UpdateProjectRequest, UpdateWorkItemRequest, WorkItem,
 };
 use crate::config::Config;
 
@@ -269,6 +270,16 @@ impl Client {
     ) -> Result<Paginated<StateLite>> {
         let url = self.endpoint(&["projects", &project_id.to_string(), "states"])?;
         self.json(self.http.get(url).query(params)).await
+    }
+
+    /// `GET /projects/{project_id}/summary/`
+    ///
+    /// Counts of the project's contents. The only source of a work item count
+    /// that does not involve listing the work items themselves -- but it is one
+    /// request per project, so cache the answer rather than calling it per frame.
+    pub async fn project_summary(&self, project_id: Uuid) -> Result<ProjectSummary> {
+        let url = self.endpoint(&["projects", &project_id.to_string(), "summary"])?;
+        self.json(self.http.get(url)).await
     }
 
     // -- Plumbing ----------------------------------------------------------
