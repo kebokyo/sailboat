@@ -173,6 +173,32 @@ impl<T: Identified> Expandable<T> {
     }
 }
 
+/// Decodes a relation that may arrive as a bare id, as an expanded object, or
+/// as `null` -- plus the two shapes Plane uses for an `expand=` on a relation
+/// that is not actually set.
+///
+/// Those are the awkward cases. A null relation expands to `{}` (an unset
+/// project lead), and sometimes to a field-stub carrying no `id` at all
+/// (`estimate_point` comes back as `{"key": null, "value": "", ...}`). Neither
+/// is `null`, and neither can decode as the expanded type, so without this a
+/// single unset relation fails the entire response.
+///
+/// The rule is that an object with no `id` is not a real relation. Every type
+/// reachable through `expand=` carries one.
+fn expandable<'de, D, T>(deserializer: D) -> Result<Option<Expandable<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    match Option::<Value>::deserialize(deserializer)? {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Object(fields)) if !fields.contains_key("id") => Ok(None),
+        Some(value) => serde_json::from_value(value)
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Lite objects returned by `expand`
 // ---------------------------------------------------------------------------
@@ -447,14 +473,14 @@ pub struct Project {
     pub description_html: Option<Value>,
     #[serde(default)]
     pub network: ProjectNetwork,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub workspace: Option<Expandable<WorkspaceLite>>,
 
     // People.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub project_lead: Option<Expandable<UserLite>>,
     /// Assigned to new work items that are created without an explicit assignee.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub default_assignee: Option<Expandable<UserLite>>,
 
     // Appearance.
@@ -522,9 +548,9 @@ pub struct Project {
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub created_by: Option<Expandable<UserLite>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub updated_by: Option<Expandable<UserLite>>,
     #[serde(default)]
     pub archived_at: Option<DateTime<Utc>>,
@@ -705,9 +731,9 @@ pub struct WorkItem {
     /// human-facing key, e.g. `PROJ-12`.
     #[serde(default)]
     pub sequence_id: i32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub project: Option<Expandable<ProjectLite>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub workspace: Option<Expandable<WorkspaceLite>>,
 
     /// Body as HTML. Sanitised server-side; defaults to `<p></p>`.
@@ -719,9 +745,9 @@ pub struct WorkItem {
 
     #[serde(default)]
     pub priority: Priority,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub state: Option<Expandable<StateLite>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub parent: Option<Expandable<WorkItemLite>>,
     /// Work item type, when the project has typed work items enabled.
     #[serde(rename = "type", default)]
@@ -731,7 +757,7 @@ pub struct WorkItem {
     /// using a configured estimate scale.
     #[serde(default)]
     pub point: Option<i32>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub estimate_point: Option<Expandable<EstimatePoint>>,
 
     /// Assignee UUIDs, or full users when `expand=assignees` is in play.
@@ -774,9 +800,9 @@ pub struct WorkItem {
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub created_by: Option<Expandable<UserLite>>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "expandable")]
     pub updated_by: Option<Expandable<UserLite>>,
     #[serde(default)]
     pub deleted_at: Option<DateTime<Utc>>,
@@ -972,6 +998,54 @@ pub struct WorkItemSearchResult {
     pub type_id: Option<Uuid>,
 }
 
+/// Aggregate counts for one project, from its summary endpoint.
+///
+/// The project list payload carries member, cycle and module counts but no work
+/// item count, so this is the only way to get one without listing a project's
+/// work items and reading the page envelope.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProjectSummary {
+    pub id: Uuid,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub identifier: String,
+    #[serde(default)]
+    pub counts: ProjectCounts,
+}
+
+impl Identified for ProjectSummary {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+}
+
+/// The `counts` object nested inside a [`ProjectSummary`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ProjectCounts {
+    /// Work items in the project. Still spelled `issues` on the wire.
+    #[serde(default)]
+    pub issues: i64,
+    #[serde(default)]
+    pub states: i64,
+    #[serde(default)]
+    pub intakes: i64,
+    #[serde(default)]
+    pub labels: i64,
+    #[serde(default)]
+    pub members: i64,
+    #[serde(default)]
+    pub modules: i64,
+    #[serde(default)]
+    pub cycles: i64,
+    #[serde(default)]
+    pub pages: i64,
+    #[serde(default)]
+    pub work_item_types: i64,
+    #[serde(default)]
+    pub work_item_properties: i64,
+}
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -1048,6 +1122,44 @@ mod tests {
         .unwrap();
         assert_eq!(nested.expanded().unwrap().group, StateGroup::Started);
         assert_eq!(bare.id(), nested.id());
+    }
+
+    #[test]
+    fn an_expanded_but_null_relation_decodes() {
+        // `?expand=project_lead` on a project with no lead returns `{}`, not null.
+        let project: Project = serde_json::from_str(
+            r#"{"id":"550e8400-e29b-41d4-a716-446655440000","project_lead":{},
+                "default_assignee":{}}"#,
+        )
+        .expect("an empty expansion object should not fail the whole decode");
+        assert!(project.project_lead.is_none());
+        assert!(project.default_assignee.is_none());
+    }
+
+    #[test]
+    fn an_expanded_relation_stub_without_an_id_decodes() {
+        // `?expand=estimate_point` on an unestimated work item returns a stub
+        // with no id and null fields, rather than `{}` or null.
+        let item: WorkItem = serde_json::from_str(
+            r#"{"id":"550e8400-e29b-41d4-a716-446655440000","parent":{},
+                "estimate_point":{"deleted_at":null,"key":null,"description":"",
+                                  "value":"","created_by":null,"updated_by":null}}"#,
+        )
+        .expect("an id-less relation stub should not fail the whole decode");
+        assert!(item.estimate_point.is_none());
+        assert!(item.parent.is_none());
+    }
+
+    #[test]
+    fn a_genuinely_expanded_relation_still_decodes() {
+        let item: WorkItem = serde_json::from_str(
+            r##"{"id":"550e8400-e29b-41d4-a716-446655440000",
+                 "state":{"id":"3d4aa536-72dd-4cd1-a581-78114c185886",
+                          "name":"Cancelled","color":"#666","group":"cancelled"}}"##,
+        )
+        .expect("a real expansion must still work");
+        let state = item.state.as_ref().expect("state present");
+        assert_eq!(state.expanded().map(|s| s.name.as_str()), Some("Cancelled"));
     }
 
     #[test]
