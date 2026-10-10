@@ -33,10 +33,15 @@ use ratatui::{
 
 use crate::{
     api::types::WorkItem,
-    app::widgets::{LoadingState, WorkItemDetailsWidget},
+    app::{
+        edit::Attribute,
+        widgets::{LoadingState, WorkItemDetailsWidget},
+    },
 };
 
-use super::{Focused, RowStyle, assignee_spans, label_spans, priority_span_long, state_spans};
+use super::{
+    Focused, RowStyle, assignee_spans, display_text, label_spans, priority_span_long, state_spans,
+};
 
 impl Widget for Focused<'_, WorkItemDetailsWidget> {
     fn render(self, area: Rect, buf: &mut Buffer) {
@@ -122,51 +127,44 @@ fn attribute_rows(item: &WorkItem, dimmed: bool) -> Vec<Row<'static>> {
         None => unset(),
     };
 
-    let attributes: Vec<(&str, Line<'static>)> = vec![
-        ("key", Line::from(value(format!("#{}", item.sequence_id)))),
-        (
-            "state",
-            // Icon and colour by group, matching the work items list.
-            match item.state.as_ref().and_then(|state| state.expanded()) {
-                Some(state) => Line::from(state_spans(Some(state), dimmed)),
-                None => Line::from(unset()),
-            },
-        ),
-        (
-            "priority",
-            // Same glyph and colour as the list, so one fact shown in two places
-            // cannot drift apart.
-            Line::from(priority_span_long(item.priority, dimmed)),
-        ),
-        (
-            "assignees",
-            or_unset(assignee_spans(&item.assignees, dimmed), unset()),
-        ),
-        // Each label in its own colour rather than a bare count.
-        (
-            "labels",
-            or_unset(label_spans(&item.labels, dimmed), unset()),
-        ),
-        ("start", Line::from(date(&item.start_date))),
-        ("target", Line::from(date(&item.target_date))),
-        (
-            "estimate",
-            Line::from(named(item.estimate_point.as_ref().and_then(|point| {
-                point.expanded().map(|point| point.value.clone())
-            }))),
-        ),
-        (
-            "parent",
-            Line::from(named(item.parent.as_ref().and_then(|parent| {
-                parent
-                    .expanded()
-                    .map(|parent| format!("#{}", parent.sequence_id))
-            }))),
-        ),
-        ("completed", Line::from(stamp(&item.completed_at))),
-        ("created", Line::from(stamp(&item.created_at))),
-        ("updated", Line::from(stamp(&item.updated_at))),
-    ];
+    // Drawn in `Attribute::ALL` order, which is what lets the selected row
+    // index say which attribute the edit dialog opens on.
+    let attributes: Vec<(&str, Line<'static>)> = Attribute::ALL
+        .into_iter()
+        .map(|attribute| {
+            let rendered = match attribute {
+                Attribute::Name => Line::from(value(display_text(&item.name))),
+                Attribute::Key => Line::from(value(format!("#{}", item.sequence_id))),
+                // Icon and colour by group, matching the work items list.
+                Attribute::State => match item.state.as_ref().and_then(|state| state.expanded()) {
+                    Some(state) => Line::from(state_spans(Some(state), dimmed)),
+                    None => Line::from(unset()),
+                },
+                // Same glyph and colour as the list, so one fact shown in two
+                // places cannot drift apart.
+                Attribute::Priority => Line::from(priority_span_long(item.priority, dimmed)),
+                Attribute::Assignees => or_unset(assignee_spans(&item.assignees, dimmed), unset()),
+                // Each label in its own colour rather than a bare count.
+                Attribute::Labels => or_unset(label_spans(&item.labels, dimmed), unset()),
+                Attribute::Start => Line::from(date(&item.start_date)),
+                Attribute::Target => Line::from(date(&item.target_date)),
+                Attribute::Estimate => {
+                    Line::from(named(item.estimate_point.as_ref().and_then(|point| {
+                        point.expanded().map(|point| point.value.clone())
+                    })))
+                }
+                Attribute::Parent => Line::from(named(item.parent.as_ref().and_then(|parent| {
+                    parent
+                        .expanded()
+                        .map(|parent| format!("#{}", parent.sequence_id))
+                }))),
+                Attribute::Completed => Line::from(stamp(&item.completed_at)),
+                Attribute::Created => Line::from(stamp(&item.created_at)),
+                Attribute::Updated => Line::from(stamp(&item.updated_at)),
+            };
+            (attribute.label(), rendered)
+        })
+        .collect();
 
     attributes
         .into_iter()

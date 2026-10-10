@@ -55,9 +55,13 @@ slug = "your-workspace"
 | key | does |
 |-----|------|
 | `j`/`k`, `↓`/`↑` | move up and down |
-| `l`, `→`, `Enter` | open the highlighted project or work item |
+| `l`, `→`, `Enter` | open the highlighted project or work item; on a work item's details, edit the highlighted attribute |
 | `h`, `←`, `Backspace` | go back |
+| `x` | close the highlighted or open work item (moves it to the project's first completed state) |
 | `q`, `Esc` | quit |
+
+name, state, priority and the start and target dates can be edited. in a text field, `Enter` saves,
+`Esc` cancels, and an emptied date field clears the date.
 
 ## License
 

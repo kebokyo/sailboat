@@ -22,22 +22,25 @@
 use std::time::Duration;
 
 use color_eyre::eyre::Result;
-use crossterm::event::{Event, EventStream, KeyCode};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent};
 use ratatui::DefaultTerminal;
 use tokio_stream::StreamExt;
 
+pub mod edit;
 pub mod widgets;
 
 use crate::{
     api::{
         Client,
-        types::{Project, WorkItem},
+        types::{Project, StateGroup, UpdateWorkItemRequest, WorkItem},
     },
     config::Config,
     ui::ui,
 };
+use edit::{Attribute, EditDialog, Outcome};
 use widgets::{
-    ListProjectsWidget, ListWorkItemsWidget, ProjectDetailsWidget, WorkItemDetailsWidget,
+    ListProjectsWidget, ListWorkItemsWidget, ProjectDetailsWidget, ProjectStatesWidget,
+    WorkItemDetailsWidget, project_states::closing_state,
 };
 
 /// The different views that sailboat displays.
@@ -51,7 +54,6 @@ pub enum CurrentScreen {
     /// Viewing a specific work item's details.
     WorkItemDetailsView,
     /// Editing an attribute of a work item. Editing description is its own view: [`CurrentScreen::EditDescriptionView`]
-    #[allow(dead_code)] // Rendered, but no key opens it yet.
     EditWorkItemDialog,
     /// Editing the description of a work item using Markdown.
     #[allow(dead_code)] // Rendered, but no key opens it yet.
@@ -71,6 +73,9 @@ pub struct App {
     #[allow(dead_code)] // Not rendered yet; see `widgets::project_details`.
     pub project_details: ProjectDetailsWidget,
     pub work_item_details: WorkItemDetailsWidget,
+    pub project_states: ProjectStatesWidget,
+    /// The open edit dialog, while on [`CurrentScreen::EditWorkItemDialog`].
+    pub edit_dialog: Option<EditDialog>,
     should_quit: bool,
 }
 
@@ -100,6 +105,12 @@ impl App {
 
     fn handle_event(&mut self, event: &Event, api: &Client) {
         if let Some(key) = event.as_key_press_event() {
+            // The dialog takes every key: a text field needs `q` and Backspace
+            // for typing, not for quitting and going back.
+            if matches!(self.current_screen, CurrentScreen::EditWorkItemDialog) {
+                self.handle_dialog_key(key, api);
+                return;
+            }
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
                 KeyCode::Char('j') | KeyCode::Down => self.scroll_down(),
@@ -108,6 +119,7 @@ impl App {
                 KeyCode::Char('l') | KeyCode::Right => self.scroll_right(api),
                 KeyCode::Enter => self.confirm(api),
                 KeyCode::Backspace => self.cancel(api),
+                KeyCode::Char('x') => self.close_work_item(api),
                 _ => {}
             }
         }
@@ -121,6 +133,9 @@ impl App {
             CurrentScreen::MainProjectsView if self.list_projects.is_ready() => {
                 if let Some(project) = self.list_projects.selected_project() {
                     self.list_work_items.run(api, project.id);
+                    // Fetched now so the state picker and closing have them
+                    // ready by the time a work item is open.
+                    self.project_states.ensure(api, project.id);
                     self.current_project = Some(project);
                     self.current_screen = CurrentScreen::MainWorkItemsView;
                 }
@@ -134,9 +149,17 @@ impl App {
                     self.list_work_items.selected_work_item(),
                 ) {
                     self.work_item_details.run(api, project.id, item.id);
+                    // A no-op once loaded; retries if the fetch on opening the
+                    // project failed.
+                    self.project_states.ensure(api, project.id);
                     self.current_work_item = Some(item);
                     self.current_screen = CurrentScreen::WorkItemDetailsView;
                 }
+            }
+
+            // Edit the attribute under the cursor, if it is one that can be.
+            CurrentScreen::WorkItemDetailsView if self.work_item_details.is_ready() => {
+                self.open_edit_dialog();
             }
             _ => {}
         }
@@ -207,6 +230,92 @@ impl App {
         self.confirm(api);
     }
 
+    fn open_edit_dialog(&mut self) {
+        let (Some(project), Some(item), Some(row)) = (
+            self.current_project.as_ref(),
+            self.work_item_details.work_item(),
+            self.work_item_details.selected_row(),
+        ) else {
+            return;
+        };
+        let Some(attribute) = Attribute::ALL.get(row).copied() else {
+            return;
+        };
+        let states = self.project_states.states(project.id);
+        if let Some(dialog) = EditDialog::open(attribute, &item, &states) {
+            self.edit_dialog = Some(dialog);
+            self.current_screen = CurrentScreen::EditWorkItemDialog;
+        }
+    }
+
+    fn handle_dialog_key(&mut self, key: KeyEvent, api: &Client) {
+        let Some(dialog) = self.edit_dialog.as_mut() else {
+            self.current_screen = CurrentScreen::WorkItemDetailsView;
+            return;
+        };
+        match dialog.handle_key(key) {
+            Outcome::Continue => return,
+            Outcome::Cancel => {}
+            Outcome::Submit(changes) => {
+                if let (Some(project), Some(item)) = (
+                    self.current_project.as_ref(),
+                    self.current_work_item.as_ref(),
+                ) {
+                    self.work_item_details
+                        .update(api, project.id, item.id, *changes);
+                }
+            }
+        }
+        self.edit_dialog = None;
+        self.current_screen = CurrentScreen::WorkItemDetailsView;
+    }
+
+    /// Move a work item to the project's first completed state: the open one
+    /// on the details screen, or the highlighted one in the work items list.
+    /// Does nothing if it is already completed, or if the project's states
+    /// have not loaded yet.
+    fn close_work_item(&mut self, api: &Client) {
+        let Some(project) = self.current_project.as_ref() else {
+            return;
+        };
+        let states = self.project_states.states(project.id);
+        let Some(done) = closing_state(&states) else {
+            return;
+        };
+        let changes = UpdateWorkItemRequest {
+            state: Some(done.id),
+            ..Default::default()
+        };
+        let is_open = |item: &WorkItem| {
+            let group = item
+                .state
+                .as_ref()
+                .and_then(|state| states.iter().find(|s| s.id == state.id()))
+                .map(|state| state.group);
+            group != Some(StateGroup::Completed)
+        };
+
+        match self.current_screen {
+            CurrentScreen::MainWorkItemsView if self.list_work_items.is_ready() => {
+                if let Some(item) = self.list_work_items.selected_work_item()
+                    && is_open(&item)
+                {
+                    self.list_work_items
+                        .update(api, project.id, item.id, changes);
+                }
+            }
+            CurrentScreen::WorkItemDetailsView if self.work_item_details.is_ready() => {
+                if let Some(item) = self.work_item_details.work_item()
+                    && is_open(&item)
+                {
+                    self.work_item_details
+                        .update(api, project.id, item.id, changes);
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub fn work_item_key(&self) -> Option<String> {
         let project = self.current_project.as_ref()?;
         let item = self.current_work_item.as_ref()?;
@@ -214,7 +323,11 @@ impl App {
     }
 
     pub fn work_item_name(&self) -> Option<String> {
-        let item = self.current_work_item.as_ref()?;
-        Some(item.name.clone())
+        // Prefer the freshly fetched copy, so a rename shows up straight away.
+        let item = self
+            .work_item_details
+            .work_item()
+            .or_else(|| self.current_work_item.clone())?;
+        Some(item.name)
     }
 }

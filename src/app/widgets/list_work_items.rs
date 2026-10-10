@@ -28,7 +28,7 @@ use ratatui::widgets::TableState;
 use uuid::Uuid;
 
 use crate::api::Client;
-use crate::api::types::{ListWorkItemsParams, WorkItem};
+use crate::api::types::{ListWorkItemsParams, UpdateWorkItemRequest, WorkItem};
 
 use super::{LoadingState, restored_selection};
 
@@ -63,10 +63,13 @@ impl ListWorkItemsWidget {
             let mut state = self.state.write().unwrap();
             if state.project_id != Some(project_id) {
                 state.work_items.clear();
-                state.cursor = None;
                 state.table_state.select(None);
                 state.project_id = Some(project_id);
             }
+            // A refresh starts from the first page. Keeping the cursor would
+            // fetch the page *after* the one on screen, since it holds the
+            // next page's cursor once a load lands.
+            state.cursor = None;
         }
 
         let this = self.clone();
@@ -80,6 +83,33 @@ impl ListWorkItemsWidget {
             Ok(()) => self.set_loading_state(LoadingState::Loaded),
             Err(error) => self.set_loading_state(LoadingState::Error(error.to_string())),
         }
+    }
+
+    /// Send `changes` for one work item in the list, then refresh the list.
+    pub(crate) fn update(
+        &self,
+        api: &Client,
+        project_id: Uuid,
+        work_item_id: Uuid,
+        changes: UpdateWorkItemRequest,
+    ) {
+        let this = self.clone();
+        let api = api.clone();
+        // Same reason as in `run`: reload the first page, not the next one.
+        this.state.write().unwrap().cursor = None;
+        tokio::spawn(async move {
+            this.set_loading_state(LoadingState::Loading);
+            let result = async {
+                api.update_work_item(project_id, work_item_id, &changes)
+                    .await?;
+                this.load_work_items(&api, project_id).await
+            }
+            .await;
+            match result {
+                Ok(()) => this.set_loading_state(LoadingState::Loaded),
+                Err(error) => this.set_loading_state(LoadingState::Error(error.to_string())),
+            }
+        });
     }
 
     async fn load_work_items(&self, api: &Client, project_id: Uuid) -> Result<()> {

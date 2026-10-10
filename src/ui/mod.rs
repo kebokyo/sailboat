@@ -32,9 +32,9 @@ use ratatui::{
 pub mod render;
 pub mod widgets;
 
-use widgets::{Focused, work_item_description::Description};
+use widgets::{Focused, edit_work_item::EditDialogView, work_item_description::Description};
 
-use crate::app::{App, CurrentScreen};
+use crate::app::{App, CurrentScreen, edit::Input};
 
 pub fn ui(frame: &mut Frame, app: &App) {
     let top_level = Layout::default()
@@ -104,7 +104,9 @@ pub fn ui(frame: &mut Frame, app: &App) {
                 main_content_layout[1],
             );
         }
-        CurrentScreen::WorkItemDetailsView | CurrentScreen::EditDescriptionView => {
+        CurrentScreen::WorkItemDetailsView
+        | CurrentScreen::EditWorkItemDialog
+        | CurrentScreen::EditDescriptionView => {
             let details_content_layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(30), Constraint::Fill(1)])
@@ -124,8 +126,11 @@ pub fn ui(frame: &mut Frame, app: &App) {
                 Description(&app.work_item_details, description_focused),
                 details_content_layout[1],
             );
+
+            if let Some(dialog) = &app.edit_dialog {
+                frame.render_widget(EditDialogView(dialog), content_area);
+            }
         }
-        _ => {}
     }
 
     let mut keybinds: Vec<String> = vec![];
@@ -138,22 +143,29 @@ pub fn ui(frame: &mut Frame, app: &App) {
         CurrentScreen::MainWorkItemsView => {
             keybinds.push("j/k, ↓/↑ scroll".to_string());
             keybinds.push("l, →, ↳ open".to_string());
+            keybinds.push("x close".to_string());
             keybinds.push("h, ←, ⌫ back".to_string());
             keybinds.push("q, esc. quit".to_string());
         }
         CurrentScreen::WorkItemDetailsView => {
             keybinds.push("j/k, ↓/↑ scroll".to_string());
-            keybinds.push("↳ edit".to_string());
-            keybinds.push("⇥ description".to_string());
-            keybinds.push("⌫ back".to_string());
-            keybinds.push("esc. quit".to_string());
+            keybinds.push("l, →, ↳ edit".to_string());
+            keybinds.push("x close".to_string());
+            keybinds.push("h, ←, ⌫ back".to_string());
+            keybinds.push("q, esc. quit".to_string());
         }
-        CurrentScreen::EditWorkItemDialog => {
-            keybinds.push("h/j/k/l, ←/↓/↑/→ navigate".to_string());
-            keybinds.push("↳ confirm".to_string());
-            keybinds.push("⌫ cancel".to_string());
-            keybinds.push("esc. quit".to_string());
-        }
+        CurrentScreen::EditWorkItemDialog => match app.edit_dialog.as_ref().map(|d| &d.input) {
+            Some(Input::Text { .. }) => {
+                keybinds.push("type to edit".to_string());
+                keybinds.push("↳ save".to_string());
+                keybinds.push("esc. cancel".to_string());
+            }
+            _ => {
+                keybinds.push("j/k, ↓/↑ choose".to_string());
+                keybinds.push("l, →, ↳ save".to_string());
+                keybinds.push("h, ←, ⌫, esc. cancel".to_string());
+            }
+        },
         CurrentScreen::EditDescriptionView => {
             keybinds.push("←/↓/↑/→ navigate".to_string());
             keybinds.push("⇥ attributes".to_string());
