@@ -17,6 +17,48 @@ IDE &mdash; to easily track and log progress, next steps, future plans, and more
 > software specifically for *our* use and ours alone, we figured being honest about our use of AI would be better than
 > saying nothing and getting "caught" resulting in even more shame from others.
 
+## getting started
+
+you'll need Rust 1.95 or newer.
+
+```sh
+git clone https://github.com/kebokyo/sailboat
+cd sailboat
+cargo run --release
+```
+
+sailboat needs a Plane API token and your workspace slug. create a personal access token in
+your Plane profile settings; the workspace slug is the first path segment of your
+Plane URL (`https://app.plane.so/<slug>/...`). the easiest place for both is a `.env` file at the root
+of the repo (it's gitignored):
+
+```sh
+PLANE_API_KEY=plane_api_...
+PLANE_WORKSPACE=your-workspace
+# only if you self-host:
+# PLANE_BASE_URL=https://plane.example.com
+```
+
+you can also put settings in `~/.config/sailboat/config.toml` (or wherever `SAILBOAT_CONFIG` points).
+environment variables win over the file.
+
+```toml
+[api]
+base_url = "https://api.plane.so"
+
+[workspace]
+slug = "your-workspace"
+```
+
+### keys
+
+| key | does |
+|-----|------|
+| `j`/`k`, `↓`/`↑` | move up and down |
+| `l`, `→`, `Enter` | open the highlighted project or work item |
+| `h`, `←`, `Backspace` | go back |
+| `q`, `Esc` | quit |
+
 ## License
 
 Unless otherwise noted, all files in this distribution are released

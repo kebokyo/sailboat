@@ -1123,10 +1123,7 @@ mod tests {
             serde_json::from_str::<ProjectNetwork>("0").unwrap(),
             ProjectNetwork::Secret
         );
-        assert_eq!(
-            serde_json::to_string(&ProjectNetwork::Public).unwrap(),
-            "2"
-        );
+        assert_eq!(serde_json::to_string(&ProjectNetwork::Public).unwrap(), "2");
         assert!(serde_json::from_str::<ProjectNetwork>("1").is_err());
     }
 

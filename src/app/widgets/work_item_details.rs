@@ -120,6 +120,7 @@ impl WorkItemDetailsWidget {
 
     /// The loaded work item, cloned so the caller is not holding a lock guard
     /// while it renders.
+    #[allow(dead_code)] // For the edit dialog, which isn't wired up yet.
     pub fn work_item(&self) -> Option<WorkItem> {
         self.state.read().unwrap().work_item.clone()
     }

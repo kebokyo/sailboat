@@ -55,14 +55,15 @@ pub fn ui(frame: &mut Frame, app: &App) {
 
     let mut breadcrumbs = vec![app.current_workspace.clone()];
     match app.current_screen {
-        CurrentScreen::WorkItemDetailsView |
-        CurrentScreen::EditWorkItemDialog |
-        CurrentScreen::EditDescriptionView => {
-            if let Some(key) = app.work_item_key() &&
-               let Some(name) = app.work_item_name() {
+        CurrentScreen::WorkItemDetailsView
+        | CurrentScreen::EditWorkItemDialog
+        | CurrentScreen::EditDescriptionView => {
+            if let Some(key) = app.work_item_key()
+                && let Some(name) = app.work_item_name()
+            {
                 breadcrumbs.push(format!("{}: {}", key, name));
             }
-        },
+        }
         /*CurrentScreen::EditDescriptionView => {
             if let Some(key) = app.work_item_key() {
                 breadcrumbs.push(key);
@@ -86,10 +87,7 @@ pub fn ui(frame: &mut Frame, app: &App) {
         CurrentScreen::MainProjectsView | CurrentScreen::MainWorkItemsView => {
             let main_content_layout = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Percentage(30),
-                    Constraint::Fill(1)
-                ])
+                .constraints([Constraint::Percentage(30), Constraint::Fill(1)])
                 .split(content_area);
 
             // Exactly one pane is live at a time; the other renders dimmed to show that
@@ -97,57 +95,65 @@ pub fn ui(frame: &mut Frame, app: &App) {
             let projects_focused = matches!(app.current_screen, CurrentScreen::MainProjectsView);
             let work_items_focused = matches!(app.current_screen, CurrentScreen::MainWorkItemsView);
 
-            frame.render_widget(Focused(&app.list_projects, projects_focused), main_content_layout[0]);
-            frame.render_widget(Focused(&app.list_work_items, work_items_focused), main_content_layout[1]);
-        },
-        CurrentScreen::WorkItemDetailsView |
-        CurrentScreen::EditDescriptionView => {
+            frame.render_widget(
+                Focused(&app.list_projects, projects_focused),
+                main_content_layout[0],
+            );
+            frame.render_widget(
+                Focused(&app.list_work_items, work_items_focused),
+                main_content_layout[1],
+            );
+        }
+        CurrentScreen::WorkItemDetailsView | CurrentScreen::EditDescriptionView => {
             let details_content_layout = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Percentage(30),
-                    Constraint::Fill(1)
-                ])
+                .constraints([Constraint::Percentage(30), Constraint::Fill(1)])
                 .split(content_area);
 
             // Exactly one pane is live at a time; the other renders dimmed to show that
             // what it holds was fetched earlier and has not been refreshed since.
             let details_focused = matches!(app.current_screen, CurrentScreen::WorkItemDetailsView);
-            let description_focused = matches!(app.current_screen, CurrentScreen::EditDescriptionView);
+            let description_focused =
+                matches!(app.current_screen, CurrentScreen::EditDescriptionView);
 
-            frame.render_widget(Focused(&app.work_item_details, details_focused), details_content_layout[0]);
-            frame.render_widget(Description(&app.work_item_details, description_focused), details_content_layout[1]);
-        },
+            frame.render_widget(
+                Focused(&app.work_item_details, details_focused),
+                details_content_layout[0],
+            );
+            frame.render_widget(
+                Description(&app.work_item_details, description_focused),
+                details_content_layout[1],
+            );
+        }
         _ => {}
     }
-    
-    
+
     let mut keybinds: Vec<String> = vec![];
     match app.current_screen {
         CurrentScreen::MainProjectsView => {
             keybinds.push("j/k, ↓/↑ scroll".to_string());
             keybinds.push("l, →, ↳ open".to_string());
             keybinds.push("q, esc. quit".to_string());
-        },
+        }
         CurrentScreen::MainWorkItemsView => {
             keybinds.push("j/k, ↓/↑ scroll".to_string());
             keybinds.push("l, →, ↳ open".to_string());
             keybinds.push("h, ←, ⌫ back".to_string());
             keybinds.push("q, esc. quit".to_string());
-        },
+        }
         CurrentScreen::WorkItemDetailsView => {
             keybinds.push("j/k, ↓/↑ scroll".to_string());
             keybinds.push("↳ edit".to_string());
             keybinds.push("⇥ description".to_string());
             keybinds.push("⌫ back".to_string());
             keybinds.push("esc. quit".to_string());
-        },
+        }
         CurrentScreen::EditWorkItemDialog => {
             keybinds.push("h/j/k/l, ←/↓/↑/→ navigate".to_string());
             keybinds.push("↳ confirm".to_string());
             keybinds.push("⌫ cancel".to_string());
             keybinds.push("esc. quit".to_string());
-        },
+        }
         CurrentScreen::EditDescriptionView => {
             keybinds.push("←/↓/↑/→ navigate".to_string());
             keybinds.push("⇥ attributes".to_string());
@@ -155,8 +161,7 @@ pub fn ui(frame: &mut Frame, app: &App) {
             keybinds.push("⌃+↳ confirm".to_string());
             keybinds.push("^+⌫ cancel".to_string());
             keybinds.push("esc. quit".to_string());
-        },
-        _ => {}
+        }
     }
 
     let footer = Line::from(Span::from(keybinds.join(" | ")).fg(Color::White));

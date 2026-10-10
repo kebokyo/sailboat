@@ -55,6 +55,10 @@
 //! there is no way to close something without first discovering which state
 //! means done.
 
+// `Error` carries the server's response body so a failure can be reported in
+// full. Errors are rare next to successes, so the size isn't worth boxing.
+#![allow(clippy::result_large_err)]
+
 pub mod types;
 
 use std::{error::Error as StdError, fmt, time::Duration};
@@ -68,8 +72,8 @@ use uuid::Uuid;
 
 use crate::api::types::{
     ApiError, CreateProjectRequest, CreateWorkItemRequest, DetailParams, ListProjectsParams,
-    ListWorkItemsParams, PageParams, Paginated, Project, SearchWorkItems, SearchWorkItemsParams,
-    ProjectSummary, StateLite, UpdateProjectRequest, UpdateWorkItemRequest, WorkItem,
+    ListWorkItemsParams, PageParams, Paginated, Project, ProjectSummary, SearchWorkItems,
+    SearchWorkItemsParams, StateLite, UpdateProjectRequest, UpdateWorkItemRequest, WorkItem,
 };
 use crate::config::Config;
 
@@ -94,8 +98,8 @@ pub struct Client {
 impl Client {
     /// Build a client from resolved configuration.
     pub fn new(config: &Config) -> Result<Self> {
-        let mut api_key = HeaderValue::from_str(&config.api.api_key)
-            .map_err(|_| Error::InvalidApiKey)?;
+        let mut api_key =
+            HeaderValue::from_str(&config.api.api_key).map_err(|_| Error::InvalidApiKey)?;
         // Keeps the token out of any `Debug` rendering of the header map.
         api_key.set_sensitive(true);
 
@@ -443,7 +447,10 @@ impl fmt::Display for Error {
                 None => write!(f, "rate limited by Plane: {}", describe(error)),
             },
             Error::Decode { url, source, body } => {
-                write!(f, "could not decode the response from {url}: {source}\nbody: {body}")
+                write!(
+                    f,
+                    "could not decode the response from {url}: {source}\nbody: {body}"
+                )
             }
         }
     }
@@ -494,7 +501,13 @@ fn parse_api_error(body: &str) -> ApiError {
 }
 
 fn parse_retry_after(headers: &HeaderMap) -> Option<Duration> {
-    let seconds = headers.get(RETRY_AFTER)?.to_str().ok()?.trim().parse().ok()?;
+    let seconds = headers
+        .get(RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
     Some(Duration::from_secs(seconds))
 }
 
@@ -541,7 +554,9 @@ mod tests {
                 .endpoint(&["projects", project, "work-items"])
                 .unwrap()
                 .as_str(),
-            format!("https://api.plane.so/api/v1/workspaces/my-team/projects/{project}/work-items/")
+            format!(
+                "https://api.plane.so/api/v1/workspaces/my-team/projects/{project}/work-items/"
+            )
         );
         assert_eq!(
             client.endpoint(&["work-items", "search"]).unwrap().as_str(),
@@ -582,7 +597,10 @@ mod tests {
     fn work_item_keys_stay_one_segment() {
         let client = client_for("https://api.plane.so", "my-team");
         assert_eq!(
-            client.endpoint(&["work-items", "PROJ-12"]).unwrap().as_str(),
+            client
+                .endpoint(&["work-items", "PROJ-12"])
+                .unwrap()
+                .as_str(),
             "https://api.plane.so/api/v1/workspaces/my-team/work-items/PROJ-12/"
         );
     }
@@ -673,7 +691,9 @@ mod tests {
             .create_project(&CreateProjectRequest {
                 name: format!("Sailboat lifecycle {marker}"),
                 identifier: format!("SBT{marker}"),
-                description: Some("Temporary. Created and removed by sailboat's test suite.".into()),
+                description: Some(
+                    "Temporary. Created and removed by sailboat's test suite.".into(),
+                ),
                 ..Default::default()
             })
             .await?;
@@ -713,7 +733,9 @@ mod tests {
         );
 
         // ...and on its own.
-        let fetched = client.get_project(project.id, &DetailParams::default()).await?;
+        let fetched = client
+            .get_project(project.id, &DetailParams::default())
+            .await?;
         ensure!(
             fetched.identifier == project.identifier,
             "get_project returned a different project"
@@ -747,17 +769,24 @@ mod tests {
                 },
             )
             .await?;
-        ensure!(updated.cycle_view, "update_project did not enable cycle_view");
+        ensure!(
+            updated.cycle_view,
+            "update_project did not enable cycle_view"
+        );
 
         // Archive and restore.
         client.archive_project(project.id).await?;
-        let archived = client.get_project(project.id, &DetailParams::default()).await?;
+        let archived = client
+            .get_project(project.id, &DetailParams::default())
+            .await?;
         ensure!(
             archived.archived_at.is_some(),
             "archive_project left archived_at unset"
         );
         client.unarchive_project(project.id).await?;
-        let restored = client.get_project(project.id, &DetailParams::default()).await?;
+        let restored = client
+            .get_project(project.id, &DetailParams::default())
+            .await?;
         ensure!(
             restored.archived_at.is_none(),
             "unarchive_project left archived_at set"
@@ -822,7 +851,10 @@ mod tests {
                     },
                 )
                 .await?;
-            ensure!(child.parent.is_some(), "sub-item was created without a parent");
+            ensure!(
+                child.parent.is_some(),
+                "sub-item was created without a parent"
+            );
             children.push(child);
         }
 
@@ -1001,7 +1033,10 @@ mod tests {
 
         client.delete_project(project_id).await?;
 
-        match client.get_project(project_id, &DetailParams::default()).await {
+        match client
+            .get_project(project_id, &DetailParams::default())
+            .await
+        {
             // Plane answers a deleted project with 403 rather than 404: the
             // permission check runs before the lookup, and our membership went
             // with the project. Either status confirms it is gone.

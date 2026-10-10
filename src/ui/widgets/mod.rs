@@ -53,15 +53,23 @@ impl RowStyle {
     fn new(dimmed: bool) -> Self {
         if dimmed {
             // A single flat grey, so nothing in a stale pane draws the eye.
-            RowStyle { key: Color::DarkGray, text: Color::DarkGray, accent: Color::DarkGray }
+            RowStyle {
+                key: Color::DarkGray,
+                text: Color::DarkGray,
+                accent: Color::DarkGray,
+            }
         } else {
-            RowStyle { key: Color::Cyan, text: Color::White, accent: Color::LightMagenta }
+            RowStyle {
+                key: Color::Cyan,
+                text: Color::White,
+                accent: Color::LightMagenta,
+            }
         }
     }
 }
 
-use ratatui::text::Span;
 use ratatui::prelude::Stylize;
+use ratatui::text::Span;
 
 use crate::api::types::{Expandable, LabelLite, Priority, StateGroup, StateLite, UserLite};
 

@@ -21,6 +21,9 @@
 // Use is subject to license terms.
 //! A single project, fetched on its own.
 
+// No screen renders this widget yet, so nothing reads what it fetches.
+#![allow(dead_code)]
+
 use std::sync::{Arc, RwLock};
 
 use color_eyre::eyre::Result;

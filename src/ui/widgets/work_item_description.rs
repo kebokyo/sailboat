@@ -51,7 +51,11 @@ impl Widget for Description<'_> {
         // Same rule as every other pane: focus alone is not enough.
         let ready = state.loading_state == LoadingState::Loaded;
         let dimmed = !(focused && ready);
-        let title = if dimmed { Color::DarkGray } else { Color::White };
+        let title = if dimmed {
+            Color::DarkGray
+        } else {
+            Color::White
+        };
         let block = Block::new().title(Span::from("description").fg(title));
 
         let text = match &state.work_item {

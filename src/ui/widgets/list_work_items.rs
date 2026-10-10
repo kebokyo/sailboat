@@ -21,6 +21,7 @@
 // Use is subject to license terms.
 //! The work items pane: priority, number, state, name.
 
+use ratatui::prelude::Stylize;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Rect},
@@ -28,11 +29,15 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Cell, HighlightSpacing, Row, StatefulWidget, Table, Widget},
 };
-use ratatui::prelude::Stylize;
 
-use crate::{api::types::WorkItem, app::widgets::{ListWorkItemsWidget, LoadingState}};
+use crate::{
+    api::types::WorkItem,
+    app::widgets::{ListWorkItemsWidget, LoadingState},
+};
 
-use super::{Focused, RowStyle, assignee_spans, display_text, label_spans, priority_span, state_spans};
+use super::{
+    Focused, RowStyle, assignee_spans, display_text, label_spans, priority_span, state_spans,
+};
 
 /// Column width for a work item's state name. Fits Plane's default states
 /// ("In Progress" is the longest at 11).
@@ -46,7 +51,11 @@ impl Widget for Focused<'_, ListWorkItemsWidget> {
         // Same rule as the projects pane: focus alone is not enough.
         let ready = state.loading_state == LoadingState::Loaded;
         let dimmed = !(focused && ready);
-        let title = if dimmed { Color::DarkGray } else { Color::White };
+        let title = if dimmed {
+            Color::DarkGray
+        } else {
+            Color::White
+        };
         let loading = Line::from(format!("{:?}", state.loading_state)).right_aligned();
         let block = Block::new()
             .title(Span::from("work items").fg(title))
@@ -107,7 +116,7 @@ fn work_item_row(item: &WorkItem, dimmed: bool) -> Row<'static> {
 /// which is what the column is mostly scanned for.
 fn meta_spans(item: &WorkItem, dimmed: bool) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
-    let mut push = |mut group: Vec<Span<'static>>, spans: &mut Vec<Span<'static>>| {
+    let push = |mut group: Vec<Span<'static>>, spans: &mut Vec<Span<'static>>| {
         if group.is_empty() {
             return;
         }
@@ -135,7 +144,11 @@ fn meta_spans(item: &WorkItem, dimmed: bool) -> Vec<Span<'static>> {
     }
 
     if let Some(completed) = item.completed_at {
-        let colour = if dimmed { Color::DarkGray } else { Color::LightGreen };
+        let colour = if dimmed {
+            Color::DarkGray
+        } else {
+            Color::LightGreen
+        };
         push(
             vec![Span::from(format!("✔{}", completed.format("%m-%d"))).fg(colour)],
             &mut spans,
