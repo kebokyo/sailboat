@@ -29,6 +29,7 @@
 
 use ratatui::style::Color;
 
+pub mod edit_work_item;
 pub mod list_projects;
 pub mod list_work_items;
 pub mod work_item_description;

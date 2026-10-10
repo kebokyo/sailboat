@@ -33,11 +33,13 @@ use crate::api::types::Identified;
 pub mod list_projects;
 pub mod list_work_items;
 pub mod project_details;
+pub mod project_states;
 pub mod work_item_details;
 
 pub use list_projects::ListProjectsWidget;
 pub use list_work_items::ListWorkItemsWidget;
 pub use project_details::ProjectDetailsWidget;
+pub use project_states::ProjectStatesWidget;
 pub use work_item_details::WorkItemDetailsWidget;
 
 /// Where a widget is in its fetch cycle. Shared by every widget so the UI has

@@ -28,7 +28,7 @@ use ratatui::widgets::TableState;
 use uuid::Uuid;
 
 use crate::api::Client;
-use crate::api::types::{DetailParams, WorkItem};
+use crate::api::types::{DetailParams, UpdateWorkItemRequest, WorkItem};
 
 use super::LoadingState;
 
@@ -81,6 +81,35 @@ impl WorkItemDetailsWidget {
         }
     }
 
+    /// Send `changes` for the work item on screen, then fetch it again so the
+    /// pane shows what Plane saved. A failure lands in [`LoadingState::Error`]
+    /// and leaves the old values on screen.
+    pub(crate) fn update(
+        &self,
+        api: &Client,
+        project_id: Uuid,
+        work_item_id: Uuid,
+        changes: UpdateWorkItemRequest,
+    ) {
+        let this = self.clone();
+        let api = api.clone();
+        tokio::spawn(async move {
+            this.set_loading_state(LoadingState::Loading);
+            let result = async {
+                api.update_work_item(project_id, work_item_id, &changes)
+                    .await?;
+                // Read back rather than use the PATCH response, which comes
+                // without the expanded relations the pane names.
+                this.load_work_item(&api, project_id, work_item_id).await
+            }
+            .await;
+            match result {
+                Ok(()) => this.set_loading_state(LoadingState::Loaded),
+                Err(error) => this.set_loading_state(LoadingState::Error(error.to_string())),
+            }
+        });
+    }
+
     /// The fallible half, split out so `?` has somewhere to go.
     async fn load_work_item(
         &self,
@@ -120,9 +149,13 @@ impl WorkItemDetailsWidget {
 
     /// The loaded work item, cloned so the caller is not holding a lock guard
     /// while it renders.
-    #[allow(dead_code)] // For the edit dialog, which isn't wired up yet.
     pub fn work_item(&self) -> Option<WorkItem> {
         self.state.read().unwrap().work_item.clone()
+    }
+
+    /// Index of the attribute row under the cursor.
+    pub fn selected_row(&self) -> Option<usize> {
+        self.state.read().unwrap().table_state.selected()
     }
 
     pub fn scroll_down(&self) {

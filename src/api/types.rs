@@ -954,10 +954,12 @@ pub struct UpdateWorkItemRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimate_point: Option<Uuid>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_date: Option<NaiveDate>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_date: Option<NaiveDate>,
+    /// `Some(None)` sends `null`, which clears the date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_date: Option<Option<NaiveDate>>,
+    /// `Some(None)` sends `null`, which clears the date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_date: Option<Option<NaiveDate>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_order: Option<f64>,
@@ -1114,6 +1116,18 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&body).unwrap(),
             r#"{"priority":"high"}"#
+        );
+    }
+
+    #[test]
+    fn a_cleared_date_is_sent_as_null_and_an_untouched_one_is_left_out() {
+        let body = UpdateWorkItemRequest {
+            target_date: Some(None),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"target_date":null}"#
         );
     }
 
