@@ -19,7 +19,8 @@
 //
 // Copyright 2026 millie.moe. All rights reserved.
 // Use is subject to license terms.
-//! The dialog for editing one attribute, drawn over the details screen.
+//! The small dialog drawn over a pane, for editing one attribute of a work
+//! item or naming a new one.
 
 use ratatui::{
     buffer::Buffer,
@@ -30,20 +31,46 @@ use ratatui::{
     widgets::{Block, Clear, List, ListState, Paragraph, StatefulWidget, Widget},
 };
 
-use crate::app::edit::{Choice, EditDialog, Input};
+use crate::app::{
+    create::NewWorkItemDialog,
+    edit::{Choice, EditDialog, Input},
+};
 
 use super::{priority_span_long, state_spans};
 
 /// Widest the dialog gets, so a long name doesn't stretch it across the screen.
 const MAX_WIDTH: u16 = 60;
 
-pub struct EditDialogView<'a>(pub &'a EditDialog);
+pub struct DialogView<'a> {
+    pub title: &'a str,
+    pub input: &'a Input,
+    /// Shown in red under the input.
+    pub error: Option<&'a str>,
+}
 
-impl Widget for EditDialogView<'_> {
+impl<'a> DialogView<'a> {
+    pub fn edit(dialog: &'a EditDialog) -> Self {
+        DialogView {
+            title: dialog.attribute.label(),
+            input: &dialog.input,
+            error: dialog.error.as_deref(),
+        }
+    }
+
+    pub fn new_work_item(dialog: &'a NewWorkItemDialog) -> Self {
+        DialogView {
+            title: "new work item",
+            input: &dialog.input,
+            error: dialog.error.as_deref(),
+        }
+    }
+}
+
+impl Widget for DialogView<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let EditDialogView(dialog) = self;
+        let dialog = self;
 
-        let body_height = match &dialog.input {
+        let body_height = match dialog.input {
             Input::Choice { options, .. } => options.len() as u16,
             Input::Text { .. } => 1,
         };
@@ -53,7 +80,7 @@ impl Widget for EditDialogView<'_> {
 
         let block = Block::bordered()
             .border_style(Style::default().fg(Color::LightMagenta))
-            .title(Span::from(format!(" {} ", dialog.attribute.label())).fg(Color::White));
+            .title(Span::from(format!(" {} ", dialog.title)).fg(Color::White));
         let inner = block.inner(popup);
         Clear.render(popup, buf);
         block.render(popup, buf);
@@ -62,7 +89,7 @@ impl Widget for EditDialogView<'_> {
             height: inner.height.saturating_sub(error_height),
             ..inner
         };
-        match &dialog.input {
+        match dialog.input {
             Input::Choice { options, selected } => {
                 let items: Vec<Line> = options
                     .iter()
@@ -84,13 +111,13 @@ impl Widget for EditDialogView<'_> {
             }
         }
 
-        if let Some(error) = &dialog.error {
+        if let Some(error) = dialog.error {
             let line = Rect {
                 y: inner.y + inner.height.saturating_sub(1),
                 height: 1,
                 ..inner
             };
-            Line::from(Span::from(error.as_str()).fg(Color::LightRed)).render(line, buf);
+            Line::from(Span::from(error).fg(Color::LightRed)).render(line, buf);
         }
     }
 }

@@ -32,7 +32,7 @@ use ratatui::{
 pub mod render;
 pub mod widgets;
 
-use widgets::{Focused, edit_work_item::EditDialogView, work_item_description::Description};
+use widgets::{Focused, edit_work_item::DialogView, work_item_description::Description};
 
 use crate::app::{App, CurrentScreen, edit::Input};
 
@@ -84,7 +84,9 @@ pub fn ui(frame: &mut Frame, app: &App) {
     frame.render_widget(tabs, top_level[1] + Offset::new(1, 0));
 
     match app.current_screen {
-        CurrentScreen::MainProjectsView | CurrentScreen::MainWorkItemsView => {
+        CurrentScreen::MainProjectsView
+        | CurrentScreen::MainWorkItemsView
+        | CurrentScreen::NewWorkItemDialog => {
             let main_content_layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(30), Constraint::Fill(1)])
@@ -93,7 +95,10 @@ pub fn ui(frame: &mut Frame, app: &App) {
             // Exactly one pane is live at a time; the other renders dimmed to show that
             // what it holds was fetched earlier and has not been refreshed since.
             let projects_focused = matches!(app.current_screen, CurrentScreen::MainProjectsView);
-            let work_items_focused = matches!(app.current_screen, CurrentScreen::MainWorkItemsView);
+            let work_items_focused = matches!(
+                app.current_screen,
+                CurrentScreen::MainWorkItemsView | CurrentScreen::NewWorkItemDialog
+            );
 
             frame.render_widget(
                 Focused(&app.list_projects, projects_focused),
@@ -103,6 +108,10 @@ pub fn ui(frame: &mut Frame, app: &App) {
                 Focused(&app.list_work_items, work_items_focused),
                 main_content_layout[1],
             );
+
+            if let Some(dialog) = &app.new_dialog {
+                frame.render_widget(DialogView::new_work_item(dialog), content_area);
+            }
         }
         CurrentScreen::WorkItemDetailsView
         | CurrentScreen::EditWorkItemDialog
@@ -128,7 +137,7 @@ pub fn ui(frame: &mut Frame, app: &App) {
             );
 
             if let Some(dialog) = &app.edit_dialog {
-                frame.render_widget(EditDialogView(dialog), content_area);
+                frame.render_widget(DialogView::edit(dialog), content_area);
             }
         }
     }
@@ -143,9 +152,15 @@ pub fn ui(frame: &mut Frame, app: &App) {
         CurrentScreen::MainWorkItemsView => {
             keybinds.push("j/k, ↓/↑ scroll".to_string());
             keybinds.push("l, →, ↳ open".to_string());
+            keybinds.push("n new".to_string());
             keybinds.push("x close".to_string());
             keybinds.push("h, ←, ⌫ back".to_string());
             keybinds.push("q, esc. quit".to_string());
+        }
+        CurrentScreen::NewWorkItemDialog => {
+            keybinds.push("type a name".to_string());
+            keybinds.push("↳ create".to_string());
+            keybinds.push("esc. cancel".to_string());
         }
         CurrentScreen::WorkItemDetailsView => {
             keybinds.push("j/k, ↓/↑ scroll".to_string());
