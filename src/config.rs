@@ -106,14 +106,16 @@ impl Config {
             )
         })?;
 
-        let slug = from_env(ENV_WORKSPACE).or(file.workspace.slug).ok_or_else(|| {
-            eyre!(
-                "no Plane workspace set.\n\n\
+        let slug = from_env(ENV_WORKSPACE)
+            .or(file.workspace.slug)
+            .ok_or_else(|| {
+                eyre!(
+                    "no Plane workspace set.\n\n\
                  Add the workspace slug — the first path segment of your Plane URL —\n\
                  to your `.env` file:\n\n    \
                  {ENV_WORKSPACE}=my-workspace\n"
-            )
-        })?;
+                )
+            })?;
 
         Ok(Config {
             api: Api {
@@ -235,8 +237,7 @@ mod tests {
         assert!(file.api.base_url.is_none());
         assert!(file.workspace.slug.is_none());
 
-        let file: FileConfig =
-            toml::from_str("[workspace]\nslug = \"eleboog-com\"\n").unwrap();
+        let file: FileConfig = toml::from_str("[workspace]\nslug = \"eleboog-com\"\n").unwrap();
         assert_eq!(file.workspace.slug.as_deref(), Some("eleboog-com"));
     }
 
@@ -252,7 +253,9 @@ mod tests {
                 base_url: DEFAULT_BASE_URL.to_string(),
                 api_key: "plane_api_supersecret".to_string(),
             },
-            workspace: Workspace { slug: "eleboog-com".to_string() },
+            workspace: Workspace {
+                slug: "eleboog-com".to_string(),
+            },
         };
         let rendered = format!("{config:?}");
         assert!(!rendered.contains("supersecret"), "{rendered}");
@@ -265,7 +268,9 @@ mod tests {
                 base_url: "https://api.plane.so".to_string(),
                 api_key: String::new(),
             },
-            workspace: Workspace { slug: "eleboog-com".to_string() },
+            workspace: Workspace {
+                slug: "eleboog-com".to_string(),
+            },
         };
         assert_eq!(
             config.workspace_url(),

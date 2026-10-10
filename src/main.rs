@@ -25,9 +25,9 @@
 // yet.
 #[allow(dead_code)]
 mod api;
+mod app;
 mod config;
 mod ui;
-mod app;
 
 use crate::app::App;
 

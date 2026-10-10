@@ -275,7 +275,9 @@ impl Writer {
 
             // The URL is dropped: it is unclickable here and would usually be
             // longer than the text it decorates. The colour marks it as a link.
-            Tag::Link { .. } => self.style = self.style.fg(ACCENT).add_modifier(Modifier::UNDERLINED),
+            Tag::Link { .. } => {
+                self.style = self.style.fg(ACCENT).add_modifier(Modifier::UNDERLINED)
+            }
             Tag::Image { .. } => self.style = self.style.fg(QUOTE),
 
             _ => {}
@@ -331,7 +333,6 @@ fn heading_depth(level: HeadingLevel) -> usize {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,10 +385,16 @@ mod tests {
         let text = description_to_text("<p><strong>bold</strong> and <em>italic</em></p>", false);
         let spans: Vec<_> = text.lines[0].spans.iter().collect();
 
-        let bold = spans.iter().find(|s| s.content == "bold").expect("bold span");
+        let bold = spans
+            .iter()
+            .find(|s| s.content == "bold")
+            .expect("bold span");
         assert!(bold.style.add_modifier.contains(Modifier::BOLD));
 
-        let italic = spans.iter().find(|s| s.content == "italic").expect("italic span");
+        let italic = spans
+            .iter()
+            .find(|s| s.content == "italic")
+            .expect("italic span");
         assert!(italic.style.add_modifier.contains(Modifier::ITALIC));
 
         // The markers themselves must not survive into the output.
@@ -397,10 +404,7 @@ mod tests {
 
     #[test]
     fn a_dimmed_render_is_uniformly_grey() {
-        let text = description_to_text(
-            "<h2>Heading</h2><p>body with <code>code</code></p>",
-            true,
-        );
+        let text = description_to_text("<h2>Heading</h2><p>body with <code>code</code></p>", true);
         for line in &text.lines {
             for span in &line.spans {
                 assert_eq!(

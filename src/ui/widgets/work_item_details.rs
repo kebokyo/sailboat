@@ -22,6 +22,7 @@
 //! The details pane: one work item's attributes, one per row.
 
 use chrono::{DateTime, NaiveDate, Utc};
+use ratatui::prelude::Stylize;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Rect},
@@ -29,9 +30,11 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Cell, HighlightSpacing, Row, StatefulWidget, Table, Widget},
 };
-use ratatui::prelude::Stylize;
 
-use crate::{api::types::WorkItem, app::widgets::{LoadingState, WorkItemDetailsWidget}};
+use crate::{
+    api::types::WorkItem,
+    app::widgets::{LoadingState, WorkItemDetailsWidget},
+};
 
 use super::{Focused, RowStyle, assignee_spans, label_spans, priority_span_long, state_spans};
 
@@ -43,7 +46,11 @@ impl Widget for Focused<'_, WorkItemDetailsWidget> {
         // Same rule as the list panes: focus alone is not enough.
         let ready = state.loading_state == LoadingState::Loaded;
         let dimmed = !(focused && ready);
-        let title = if dimmed { Color::DarkGray } else { Color::White };
+        let title = if dimmed {
+            Color::DarkGray
+        } else {
+            Color::White
+        };
         let loading = Line::from(format!("{:?}", state.loading_state)).right_aligned();
         let block = Block::new()
             .borders(Borders::RIGHT)
@@ -105,7 +112,6 @@ fn attribute_rows(item: &WorkItem, dimmed: bool) -> Vec<Row<'static>> {
         None => unset(),
     };
 
-
     let date = |date: &Option<NaiveDate>| match date {
         Some(date) => value(date.format("%Y-%m-%d").to_string()),
         None => unset(),
@@ -132,9 +138,15 @@ fn attribute_rows(item: &WorkItem, dimmed: bool) -> Vec<Row<'static>> {
             // cannot drift apart.
             Line::from(priority_span_long(item.priority, dimmed)),
         ),
-        ("assignees", or_unset(assignee_spans(&item.assignees, dimmed), unset())),
+        (
+            "assignees",
+            or_unset(assignee_spans(&item.assignees, dimmed), unset()),
+        ),
         // Each label in its own colour rather than a bare count.
-        ("labels", or_unset(label_spans(&item.labels, dimmed), unset())),
+        (
+            "labels",
+            or_unset(label_spans(&item.labels, dimmed), unset()),
+        ),
         ("start", Line::from(date(&item.start_date))),
         ("target", Line::from(date(&item.target_date))),
         (
@@ -146,7 +158,9 @@ fn attribute_rows(item: &WorkItem, dimmed: bool) -> Vec<Row<'static>> {
         (
             "parent",
             Line::from(named(item.parent.as_ref().and_then(|parent| {
-                parent.expanded().map(|parent| format!("#{}", parent.sequence_id))
+                parent
+                    .expanded()
+                    .map(|parent| format!("#{}", parent.sequence_id))
             }))),
         ),
         ("completed", Line::from(stamp(&item.completed_at))),

@@ -21,6 +21,7 @@
 // Use is subject to license terms.
 //! The projects pane: identifier, name, and work item count.
 
+use ratatui::prelude::Stylize;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Rect},
@@ -28,9 +29,11 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Cell, HighlightSpacing, Row, StatefulWidget, Table, Widget},
 };
-use ratatui::prelude::Stylize;
 
-use crate::{api::types::Project, app::widgets::{ListProjectsWidget, LoadingState}};
+use crate::{
+    api::types::Project,
+    app::widgets::{ListProjectsWidget, LoadingState},
+};
 
 use super::{Focused, RowStyle, display_text};
 
@@ -44,7 +47,11 @@ impl Widget for Focused<'_, ListProjectsWidget> {
         // pane regains focus -- so a grey pane and ignored keypresses always
         // have the same visible cause.
         let ready = state.loading_state == LoadingState::Loaded;
-        let title = if focused && ready { Color::White } else { Color::DarkGray };
+        let title = if focused && ready {
+            Color::White
+        } else {
+            Color::DarkGray
+        };
         let loading = Line::from(format!("{:?}", state.loading_state)).right_aligned();
         let block = Block::new()
             .borders(Borders::RIGHT)
@@ -87,7 +94,6 @@ impl Widget for Focused<'_, ListProjectsWidget> {
 
 /// Width of the project identifier column. Plane caps identifiers at 12.
 const PROJECT_IDENTIFIER_WIDTH: usize = 12;
-
 
 /// One row of the projects table: identifier, name, work item count.
 fn project_row(project: &Project, work_items: Option<i64>, dimmed: bool) -> Row<'static> {

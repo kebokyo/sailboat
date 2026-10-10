@@ -40,7 +40,6 @@ pub use list_work_items::ListWorkItemsWidget;
 pub use project_details::ProjectDetailsWidget;
 pub use work_item_details::WorkItemDetailsWidget;
 
-
 /// Where a widget is in its fetch cycle. Shared by every widget so the UI has
 /// one rule for "is this current?".
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -58,7 +57,10 @@ pub(crate) enum LoadingState {
 /// remove or reorder rows, and an index would quietly leave the cursor pointing
 /// at a different project than the one the user chose. Falls back to the top of
 /// the list when there was no selection, or when the selected project is gone.
-fn restored_selection<T: Identified>(items: &[T], previously_selected: Option<Uuid>) -> Option<usize> {
+fn restored_selection<T: Identified>(
+    items: &[T],
+    previously_selected: Option<Uuid>,
+) -> Option<usize> {
     let found = previously_selected.and_then(|id| items.iter().position(|item| item.id() == id));
 
     match found {
@@ -121,7 +123,10 @@ mod tests {
         assert!(widget.is_ready());
 
         widget.set_loading_state(LoadingState::Error("boom".to_string()));
-        assert!(!widget.is_ready(), "a failed refresh leaves stale rows on screen");
+        assert!(
+            !widget.is_ready(),
+            "a failed refresh leaves stale rows on screen"
+        );
     }
 
     #[test]

@@ -26,11 +26,13 @@ use crossterm::event::{Event, EventStream, KeyCode};
 use ratatui::DefaultTerminal;
 use tokio_stream::StreamExt;
 
-
 pub mod widgets;
 
 use crate::{
-    api::{Client, types::{Project, WorkItem}},
+    api::{
+        Client,
+        types::{Project, WorkItem},
+    },
     config::Config,
     ui::ui,
 };
@@ -69,12 +71,12 @@ pub struct App {
     #[allow(dead_code)] // Not rendered yet; see `widgets::project_details`.
     pub project_details: ProjectDetailsWidget,
     pub work_item_details: WorkItemDetailsWidget,
-    should_quit: bool
+    should_quit: bool,
 }
 
 impl App {
     const FRAMES_PER_SECOND: f32 = 60.0;
-    
+
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         let config = Config::load()?;
         let api = Client::new(&config)?;
@@ -122,7 +124,7 @@ impl App {
                     self.current_project = Some(project);
                     self.current_screen = CurrentScreen::MainWorkItemsView;
                 }
-            },
+            }
 
             // Open the highlighted work item. Needs the project id as well, so
             // it reads the project the pane is currently scoped to.
@@ -135,7 +137,7 @@ impl App {
                     self.current_work_item = Some(item);
                     self.current_screen = CurrentScreen::WorkItemDetailsView;
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -148,7 +150,7 @@ impl App {
                 // shows that project, and the highlight in the list survives the
                 // refresh, so clearing it here would contradict both.
                 self.current_screen = CurrentScreen::MainProjectsView;
-            },
+            }
             // Return to the project the open work item belongs to. Reading the
             // project list's highlight instead could land on a different
             // project if the list was refreshed while the item was open.
@@ -157,7 +159,7 @@ impl App {
                     self.list_work_items.run(api, project.id);
                     self.current_screen = CurrentScreen::MainWorkItemsView;
                 }
-            },
+            }
             _ => {}
         }
     }
