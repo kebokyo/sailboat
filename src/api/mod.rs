@@ -55,6 +55,10 @@
 //! there is no way to close something without first discovering which state
 //! means done.
 
+// `Error` carries the server's response body so a failure can be reported in
+// full. Errors are rare next to successes, so the size isn't worth boxing.
+#![allow(clippy::result_large_err)]
+
 pub mod types;
 
 use std::{error::Error as StdError, fmt, time::Duration};

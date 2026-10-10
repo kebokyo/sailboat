@@ -126,6 +126,7 @@ impl Config {
 
     /// Prefix shared by every workspace-scoped endpoint, e.g.
     /// `https://api.plane.so/api/v1/workspaces/eleboog-com`.
+    #[allow(dead_code)] // Only the tests call it so far.
     pub fn workspace_url(&self) -> String {
         format!(
             "{base}/api/v1/workspaces/{slug}",
@@ -175,7 +176,7 @@ fn load_file() -> color_eyre::Result<FileConfig> {
     match fs::read_to_string(&path) {
         Ok(text) => toml::from_str(&text)
             .wrap_err_with(|| format!("{} is not a valid sailboat config", path.display())),
-        Err(error) if error.kind() == io::ErrorKind::NotFound && required == false => {
+        Err(error) if error.kind() == io::ErrorKind::NotFound && !required => {
             Ok(FileConfig::default())
         }
         Err(error) => Err(error).wrap_err_with(|| format!("could not read {}", path.display())),

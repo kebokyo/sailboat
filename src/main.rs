@@ -20,6 +20,10 @@
 // Copyright 2026 millie.moe. All rights reserved.
 // Use is subject to license terms.
 
+// The client mirrors Plane's REST API ahead of the screens that use it: the
+// create, update and search calls are there for editing, which isn't wired up
+// yet.
+#[allow(dead_code)]
 mod api;
 mod config;
 mod ui;

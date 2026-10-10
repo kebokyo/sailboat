@@ -107,7 +107,7 @@ fn work_item_row(item: &WorkItem, dimmed: bool) -> Row<'static> {
 /// which is what the column is mostly scanned for.
 fn meta_spans(item: &WorkItem, dimmed: bool) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
-    let mut push = |mut group: Vec<Span<'static>>, spans: &mut Vec<Span<'static>>| {
+    let push = |mut group: Vec<Span<'static>>, spans: &mut Vec<Span<'static>>| {
         if group.is_empty() {
             return;
         }

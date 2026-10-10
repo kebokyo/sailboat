@@ -49,8 +49,10 @@ pub enum CurrentScreen {
     /// Viewing a specific work item's details.
     WorkItemDetailsView,
     /// Editing an attribute of a work item. Editing description is its own view: [`CurrentScreen::EditDescriptionView`]
+    #[allow(dead_code)] // Rendered, but no key opens it yet.
     EditWorkItemDialog,
     /// Editing the description of a work item using Markdown.
+    #[allow(dead_code)] // Rendered, but no key opens it yet.
     EditDescriptionView,
 }
 
@@ -64,6 +66,7 @@ pub struct App {
 
     pub list_projects: ListProjectsWidget,
     pub list_work_items: ListWorkItemsWidget,
+    #[allow(dead_code)] // Not rendered yet; see `widgets::project_details`.
     pub project_details: ProjectDetailsWidget,
     pub work_item_details: WorkItemDetailsWidget,
     should_quit: bool
@@ -99,10 +102,10 @@ impl App {
                 KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
                 KeyCode::Char('j') | KeyCode::Down => self.scroll_down(),
                 KeyCode::Char('k') | KeyCode::Up => self.scroll_up(),
-                KeyCode::Char('h') | KeyCode::Left => self.scroll_left(&api),
-                KeyCode::Char('l') | KeyCode::Right => self.scroll_right(&api),
-                KeyCode::Enter => self.confirm(&api),
-                KeyCode::Backspace => self.cancel(&api),
+                KeyCode::Char('h') | KeyCode::Left => self.scroll_left(api),
+                KeyCode::Char('l') | KeyCode::Right => self.scroll_right(api),
+                KeyCode::Enter => self.confirm(api),
+                KeyCode::Backspace => self.cancel(api),
                 _ => {}
             }
         }
@@ -116,7 +119,6 @@ impl App {
             CurrentScreen::MainProjectsView if self.list_projects.is_ready() => {
                 if let Some(project) = self.list_projects.selected_project() {
                     self.list_work_items.run(api, project.id);
-                    //self.project_details.run(api, project.id);
                     self.current_project = Some(project);
                     self.current_screen = CurrentScreen::MainWorkItemsView;
                 }
@@ -147,11 +149,12 @@ impl App {
                 // refresh, so clearing it here would contradict both.
                 self.current_screen = CurrentScreen::MainProjectsView;
             },
+            // Return to the project the open work item belongs to. Reading the
+            // project list's highlight instead could land on a different
+            // project if the list was refreshed while the item was open.
             CurrentScreen::WorkItemDetailsView => {
-                if let Some(project) = self.list_projects.selected_project() {
+                if let Some(project) = self.current_project.as_ref() {
                     self.list_work_items.run(api, project.id);
-                    //self.project_details.run(api, project.id);
-                    self.current_project = Some(project);
                     self.current_screen = CurrentScreen::MainWorkItemsView;
                 }
             },
@@ -192,47 +195,14 @@ impl App {
         }
     }
 
+    // h/← and l/→ are aliases for back and confirm, so the arrow keys and
+    // Enter/Backspace always agree on where they lead.
     fn scroll_left(&mut self, api: &Client) {
-        match self.current_screen {
-            CurrentScreen::MainWorkItemsView => {
-                self.list_projects.run(api);
-                // `current_project` is left as-is: the work items pane still
-                // shows that project, and the highlight in the list survives the
-                // refresh, so clearing it here would contradict both.
-                self.current_screen = CurrentScreen::MainProjectsView;
-            }
-            _ => {}
-        }
+        self.cancel(api);
     }
-    
-    fn scroll_right(&mut self, api: &Client) {
-        match self.current_screen {
-            // Load the highlighted project's work items. Chosen because it
-            // keeps fetches deliberate -- loading on every scroll step would
-            // fire a request per keypress and burn the 60/minute budget.
-            CurrentScreen::MainProjectsView if self.list_projects.is_ready() => {
-                if let Some(project) = self.list_projects.selected_project() {
-                    self.list_work_items.run(api, project.id);
-                    self.project_details.run(api, project.id);
-                    self.current_project = Some(project);
-                    self.current_screen = CurrentScreen::MainWorkItemsView;
-                }
-            },
 
-            // Open the highlighted work item. Needs the project id as well, so
-            // it reads the project the pane is currently scoped to.
-            CurrentScreen::MainWorkItemsView if self.list_work_items.is_ready() => {
-                if let (Some(project), Some(item)) = (
-                    self.current_project.as_ref(),
-                    self.list_work_items.selected_work_item(),
-                ) {
-                    self.work_item_details.run(api, project.id, item.id);
-                    self.current_work_item = Some(item);
-                    self.current_screen = CurrentScreen::WorkItemDetailsView;
-                }
-            },
-            _ => {}
-        }
+    fn scroll_right(&mut self, api: &Client) {
+        self.confirm(api);
     }
 
     pub fn work_item_key(&self) -> Option<String> {

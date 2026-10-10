@@ -33,7 +33,7 @@ use ratatui::prelude::Stylize;
 
 use crate::{api::types::WorkItem, app::widgets::{LoadingState, WorkItemDetailsWidget}};
 
-use super::{Focused, RowStyle, assignee_spans, label_spans, priority_span, priority_span_long, state_spans};
+use super::{Focused, RowStyle, assignee_spans, label_spans, priority_span_long, state_spans};
 
 impl Widget for Focused<'_, WorkItemDetailsWidget> {
     fn render(self, area: Rect, buf: &mut Buffer) {

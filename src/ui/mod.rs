@@ -156,7 +156,6 @@ pub fn ui(frame: &mut Frame, app: &App) {
             keybinds.push("^+⌫ cancel".to_string());
             keybinds.push("esc. quit".to_string());
         },
-        _ => {}
     }
 
     let footer = Line::from(Span::from(keybinds.join(" | ")).fg(Color::White));
