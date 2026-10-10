@@ -26,6 +26,7 @@ use crossterm::event::{Event, EventStream, KeyCode, KeyEvent};
 use ratatui::DefaultTerminal;
 use tokio_stream::StreamExt;
 
+pub mod create;
 pub mod edit;
 pub mod widgets;
 
@@ -37,6 +38,7 @@ use crate::{
     config::Config,
     ui::ui,
 };
+use create::NewWorkItemDialog;
 use edit::{Attribute, EditDialog, Outcome};
 use widgets::{
     ListProjectsWidget, ListWorkItemsWidget, ProjectDetailsWidget, ProjectStatesWidget,
@@ -53,6 +55,8 @@ pub enum CurrentScreen {
     MainWorkItemsView,
     /// Viewing a specific work item's details.
     WorkItemDetailsView,
+    /// Naming a new work item, over the work items list.
+    NewWorkItemDialog,
     /// Editing an attribute of a work item. Editing description is its own view: [`CurrentScreen::EditDescriptionView`]
     EditWorkItemDialog,
     /// Editing the description of a work item using Markdown.
@@ -76,6 +80,8 @@ pub struct App {
     pub project_states: ProjectStatesWidget,
     /// The open edit dialog, while on [`CurrentScreen::EditWorkItemDialog`].
     pub edit_dialog: Option<EditDialog>,
+    /// The open new work item dialog, while on [`CurrentScreen::NewWorkItemDialog`].
+    pub new_dialog: Option<NewWorkItemDialog>,
     should_quit: bool,
 }
 
@@ -107,9 +113,10 @@ impl App {
         if let Some(key) = event.as_key_press_event() {
             // The dialog takes every key: a text field needs `q` and Backspace
             // for typing, not for quitting and going back.
-            if matches!(self.current_screen, CurrentScreen::EditWorkItemDialog) {
-                self.handle_dialog_key(key, api);
-                return;
+            match self.current_screen {
+                CurrentScreen::EditWorkItemDialog => return self.handle_dialog_key(key, api),
+                CurrentScreen::NewWorkItemDialog => return self.handle_new_dialog_key(key, api),
+                _ => {}
             }
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
@@ -120,6 +127,7 @@ impl App {
                 KeyCode::Enter => self.confirm(api),
                 KeyCode::Backspace => self.cancel(api),
                 KeyCode::Char('x') => self.close_work_item(api),
+                KeyCode::Char('n') => self.open_new_dialog(),
                 _ => {}
             }
         }
@@ -268,6 +276,34 @@ impl App {
         }
         self.edit_dialog = None;
         self.current_screen = CurrentScreen::WorkItemDetailsView;
+    }
+
+    /// Ask for a name for a new work item in the project on screen.
+    fn open_new_dialog(&mut self) {
+        if matches!(self.current_screen, CurrentScreen::MainWorkItemsView)
+            && self.current_project.is_some()
+        {
+            self.new_dialog = Some(NewWorkItemDialog::default());
+            self.current_screen = CurrentScreen::NewWorkItemDialog;
+        }
+    }
+
+    fn handle_new_dialog_key(&mut self, key: KeyEvent, api: &Client) {
+        let Some(dialog) = self.new_dialog.as_mut() else {
+            self.current_screen = CurrentScreen::MainWorkItemsView;
+            return;
+        };
+        match dialog.handle_key(key) {
+            create::Outcome::Continue => return,
+            create::Outcome::Cancel => {}
+            create::Outcome::Submit(request) => {
+                if let Some(project) = self.current_project.as_ref() {
+                    self.list_work_items.create(api, project.id, *request);
+                }
+            }
+        }
+        self.new_dialog = None;
+        self.current_screen = CurrentScreen::MainWorkItemsView;
     }
 
     /// Move a work item to the project's first completed state: the open one

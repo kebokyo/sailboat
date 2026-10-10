@@ -206,42 +206,38 @@ impl EditDialog {
                         Outcome::Continue
                     }
                 },
-                KeyCode::Char(ch) => {
-                    let at = byte_index(value, *cursor);
-                    value.insert(at, ch);
-                    *cursor += 1;
+                _ => {
+                    edit_text(value, cursor, key);
                     Outcome::Continue
                 }
-                KeyCode::Backspace if *cursor > 0 => {
-                    *cursor -= 1;
-                    let at = byte_index(value, *cursor);
-                    value.remove(at);
-                    Outcome::Continue
-                }
-                KeyCode::Delete if *cursor < value.chars().count() => {
-                    let at = byte_index(value, *cursor);
-                    value.remove(at);
-                    Outcome::Continue
-                }
-                KeyCode::Left => {
-                    *cursor = cursor.saturating_sub(1);
-                    Outcome::Continue
-                }
-                KeyCode::Right => {
-                    *cursor = (*cursor + 1).min(value.chars().count());
-                    Outcome::Continue
-                }
-                KeyCode::Home => {
-                    *cursor = 0;
-                    Outcome::Continue
-                }
-                KeyCode::End => {
-                    *cursor = value.chars().count();
-                    Outcome::Continue
-                }
-                _ => Outcome::Continue,
             },
         }
+    }
+}
+
+/// Applies a typing or cursor key to a line of text. Shared by every text
+/// field, so they all edit the same way.
+pub(crate) fn edit_text(value: &mut String, cursor: &mut usize, key: KeyEvent) {
+    match key.code {
+        KeyCode::Char(ch) => {
+            let at = byte_index(value, *cursor);
+            value.insert(at, ch);
+            *cursor += 1;
+        }
+        KeyCode::Backspace if *cursor > 0 => {
+            *cursor -= 1;
+            let at = byte_index(value, *cursor);
+            value.remove(at);
+        }
+        KeyCode::Delete if *cursor < value.chars().count() => {
+            let at = byte_index(value, *cursor);
+            value.remove(at);
+        }
+        KeyCode::Left => *cursor = cursor.saturating_sub(1),
+        KeyCode::Right => *cursor = (*cursor + 1).min(value.chars().count()),
+        KeyCode::Home => *cursor = 0,
+        KeyCode::End => *cursor = value.chars().count(),
+        _ => {}
     }
 }
 

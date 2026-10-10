@@ -57,6 +57,7 @@ slug = "your-workspace"
 | `j`/`k`, `↓`/`↑` | move up and down |
 | `l`, `→`, `Enter` | open the highlighted project or work item; on a work item's details, edit the highlighted attribute |
 | `h`, `←`, `Backspace` | go back |
+| `n` | on a project's work items, create a new one (asks for a name; everything else starts at the project's defaults) |
 | `x` | close the highlighted or open work item (moves it to the project's first completed state) |
 | `q`, `Esc` | quit |
 

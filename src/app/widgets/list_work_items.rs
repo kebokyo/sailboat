@@ -28,7 +28,9 @@ use ratatui::widgets::TableState;
 use uuid::Uuid;
 
 use crate::api::Client;
-use crate::api::types::{ListWorkItemsParams, UpdateWorkItemRequest, WorkItem};
+use crate::api::types::{
+    CreateWorkItemRequest, ListWorkItemsParams, UpdateWorkItemRequest, WorkItem,
+};
 
 use super::{LoadingState, restored_selection};
 
@@ -49,6 +51,9 @@ pub(crate) struct ListWorkItemsState {
     /// Which project these belong to, so paging can continue against it.
     project_id: Option<Uuid>,
     cursor: Option<String>,
+    /// A work item to put the cursor on once the next load lands, in place of
+    /// the one it was on. Set after creating one, so it lands on the new item.
+    select_next: Option<Uuid>,
 }
 
 impl ListWorkItemsWidget {
@@ -112,6 +117,27 @@ impl ListWorkItemsWidget {
         });
     }
 
+    /// Create a work item in the project, then refresh the list with the
+    /// cursor on the new item.
+    pub(crate) fn create(&self, api: &Client, project_id: Uuid, request: CreateWorkItemRequest) {
+        let this = self.clone();
+        let api = api.clone();
+        this.state.write().unwrap().cursor = None;
+        tokio::spawn(async move {
+            this.set_loading_state(LoadingState::Loading);
+            let result = async {
+                let created = api.create_work_item(project_id, &request).await?;
+                this.state.write().unwrap().select_next = Some(created.id);
+                this.load_work_items(&api, project_id).await
+            }
+            .await;
+            match result {
+                Ok(()) => this.set_loading_state(LoadingState::Loaded),
+                Err(error) => this.set_loading_state(LoadingState::Error(error.to_string())),
+            }
+        });
+    }
+
     async fn load_work_items(&self, api: &Client, project_id: Uuid) -> Result<()> {
         let mut params = ListWorkItemsParams {
             // Inline everything a row shows, so no column costs a request of
@@ -132,11 +158,13 @@ impl ListWorkItemsWidget {
         }
         // Same reasoning as the projects list: swap the contents in one
         // assignment and put the cursor back on the work item it was on.
-        let selected_id = state
-            .table_state
-            .selected()
-            .and_then(|index| state.work_items.get(index))
-            .map(|item| item.id);
+        let selected_id = state.select_next.take().or_else(|| {
+            state
+                .table_state
+                .selected()
+                .and_then(|index| state.work_items.get(index))
+                .map(|item| item.id)
+        });
 
         state.work_items = page.results;
         state.cursor = next_cursor;
